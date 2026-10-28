@@ -19,24 +19,34 @@ import sys
 import re
 import json
 import ctypes
-import ctypes.wintypes
 import hashlib
-import winreg
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
+
+if sys.platform == "win32":
+    try:
+        import ctypes.wintypes
+        import winreg
+
+        class DATA_BLOB(ctypes.Structure):
+            _fields_ = [
+                ('cbData', ctypes.wintypes.DWORD),
+                ('pbData', ctypes.POINTER(ctypes.c_char))
+            ]
+    except Exception:
+        winreg = None
+        class DATA_BLOB:
+            pass
+else:
+    winreg = None
+    class DATA_BLOB:
+        pass
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 VAULT_PATH = DATA_DIR / "vault.enc"
 ENV_PATH = BASE_DIR / ".env"
-
-# Windows Crypt32 Data Structures
-class DATA_BLOB(ctypes.Structure):
-    _fields_ = [
-        ('cbData', ctypes.wintypes.DWORD),
-        ('pbData', ctypes.POINTER(ctypes.c_char))
-    ]
 
 # Regex patterns for secret redaction
 TOKEN_SCRUB_PATTERNS = [
@@ -48,18 +58,20 @@ TOKEN_SCRUB_PATTERNS = [
 
 def get_hardware_entropy() -> bytes:
     """
-    Derives machine-unique entropy from the Windows Cryptography MachineGuid
-    combined with local system constants.
+    Derives machine-unique entropy from system constants.
     """
     machine_guid = "SC_HUB_DEFAULT_SYSTEM_SALT"
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
-            val, _ = winreg.QueryValueEx(key, "MachineGuid")
-            machine_guid = str(val)
-    except Exception:
-        pass
+    if sys.platform == "win32" and winreg is not None:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
+                val, _ = winreg.QueryValueEx(key, "MachineGuid")
+                machine_guid = str(val)
+        except Exception:
+            pass
+    else:
+        machine_guid = os.environ.get("RENDER_INSTANCE_ID") or os.environ.get("HOSTNAME") or "LINUX_CONTAINER"
     
-    username = os.environ.get("USERNAME", "SystemUser")
+    username = os.environ.get("USERNAME") or os.environ.get("USER") or "SystemUser"
     seed = f"{machine_guid}:{username}:PAYOMBØYZ_VAULT_V1"
     return hashlib.sha256(seed.encode("utf-8")).digest()
 
@@ -165,8 +177,9 @@ def sync_and_lock_vault() -> Dict[str, str]:
     """
     Main vault synchronization and locking entrypoint.
     1. Reads existing .env if present.
-    2. Encrypts and syncs any new/updated keys into vault.enc.
-    3. Returns the secure credential dictionary.
+    2. Ingests environment variables from os.environ.
+    3. Encrypts and syncs any new/updated keys into vault.enc.
+    4. Returns the secure credential dictionary.
     """
     creds: Dict[str, str] = {}
 
@@ -187,8 +200,23 @@ def sync_and_lock_vault() -> Dict[str, str]:
                     if val:
                         creds[k] = val
 
-        # Re-seal with all latest values
-        seal_credentials_to_vault(creds)
+    # Ingest from os.environ
+    for k in [
+        "DISCORD_BOT_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET",
+        "DISCORD_GUILD_ID", "SLIP_API_KEY", "WEB_API_SECRET_KEY",
+        "WEB_API_LOG_TOKEN", "WEB_API_KEY", "DEFAULT_OWNER_ROLE_ID",
+        "DEFAULT_HEAD_STAFF_ROLE_ID", "DEFAULT_MANAGER_ROLE_ID",
+        "DEFAULT_STAFF_ROLE_ID", "DEFAULT_VERIFIED_ROLE_ID",
+        "DEFAULT_CATEGORY_ID", "DISPUTE_CATEGORY_ID", "ANOMALY_LOG_CHANNEL",
+        "DAILY_SUMMARY_CHANNEL", "MEMBER_AUDIT_CHANNEL", "DISPUTE_PANEL_CHANNEL",
+        "COMMAND_PREFIX"
+    ]:
+        val = os.environ.get(k)
+        if val and k not in creds:
+            creds[k] = val
+
+    # Re-seal with all latest values
+    seal_credentials_to_vault(creds)
 
     return creds
 

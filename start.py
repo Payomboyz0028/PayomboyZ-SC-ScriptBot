@@ -1,6 +1,7 @@
 import http.server
 import os
 import sys
+import time
 import threading
 import subprocess
 
@@ -13,7 +14,7 @@ class HealthHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(f'{"status":"online","service":"sc-script-bot"}\n'.encode("utf-8"))
+        self.wfile.write(b'{"status":"online","service":"sc-script-bot"}\n')
 
     def log_message(self, format, *args):
         pass
@@ -22,7 +23,7 @@ def run_health_server():
     port = int(os.getenv("PORT", 10000))
     try:
         server = http.server.ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
-        print(f"🚀 [Health Server] Listening on 0.0.0.0:{port} for sc-script-bot", flush=True)
+        print(f"🚀 [Health Server] Listening on 0.0.0.0:{port} for {SERVICE_NAME}", flush=True)
         server.serve_forever()
     except Exception as exc:
         print(f"⚠️ Health server error: {exc}", flush=True)
@@ -31,6 +32,13 @@ if __name__ == "__main__":
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
 
-    print(f"🤖 [Bot Starter] Executing {BOT_SCRIPT} in cwd {SCRIPT_DIR}...", flush=True)
-    proc = subprocess.Popen([sys.executable, BOT_SCRIPT], cwd=SCRIPT_DIR)
-    proc.wait()
+    print(f"🤖 [Bot Starter] Supervised execution of {BOT_SCRIPT} in cwd {SCRIPT_DIR}...", flush=True)
+    while True:
+        try:
+            proc = subprocess.Popen([sys.executable, BOT_SCRIPT], cwd=SCRIPT_DIR)
+            code = proc.wait()
+            print(f"⚠️ Bot process exited with code {code}. Auto-restarting in 5s...", flush=True)
+            time.sleep(5)
+        except Exception as exc:
+            print(f"❌ Error in bot supervisor: {exc}. Retrying in 10s...", flush=True)
+            time.sleep(10)

@@ -7,9 +7,21 @@ import asyncio
 from typing import Dict, Any, Optional
 import discord
 from PIL import Image
-import numpy as np
-import cv2
-from pyzbar.pyzbar import decode as pyzbar_decode
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    from pyzbar.pyzbar import decode as pyzbar_decode
+except Exception:
+    pyzbar_decode = None
 
 from config import SLIP_API_URL, SLIP_API_KEY
 from database import db
@@ -25,28 +37,30 @@ def scan_qr_from_bytes(image_bytes: bytes) -> Optional[str]:
         return None
 
     # 1. Try Pyzbar (High accuracy for standard and rotated QRs)
-    try:
-        pil_img = Image.open(io.BytesIO(image_bytes))
-        results = pyzbar_decode(pil_img)
-        if results:
-            for r in results:
-                data = r.data.decode("utf-8", errors="ignore").strip()
-                if data:
-                    return data
-    except Exception:
-        pass
+    if pyzbar_decode is not None:
+        try:
+            pil_img = Image.open(io.BytesIO(image_bytes))
+            results = pyzbar_decode(pil_img)
+            if results:
+                for r in results:
+                    data = r.data.decode("utf-8", errors="ignore").strip()
+                    if data:
+                        return data
+        except Exception:
+            pass
 
     # 2. Try OpenCV QRCodeDetector (Fallback)
-    try:
-        arr = np.asarray(bytearray(image_bytes), dtype=np.uint8)
-        cv_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if cv_img is not None:
-            detector = cv2.QRCodeDetector()
-            val, _, _ = detector.detectAndDecode(cv_img)
-            if val and val.strip():
-                return val.strip()
-    except Exception:
-        pass
+    if cv2 is not None and np is not None:
+        try:
+            arr = np.asarray(bytearray(image_bytes), dtype=np.uint8)
+            cv_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if cv_img is not None:
+                detector = cv2.QRCodeDetector()
+                val, _, _ = detector.detectAndDecode(cv_img)
+                if val and val.strip():
+                    return val.strip()
+        except Exception:
+            pass
 
     return None
 
