@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.exe
+*.zip
+node_modules/
+Prometheus-WeAre-Devs-Dumper-main/
+cache/
+output/
+scratch/
+Website/
+data/*.db
