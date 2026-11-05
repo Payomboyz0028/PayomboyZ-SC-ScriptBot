@@ -8,27 +8,41 @@ from __future__ import annotations
 import discord
 from discord import ui
 from typing import Optional
+from pathlib import Path
 
-from config import COLOR_DANGER, COLOR_SUCCESS, DEFAULT_VERIFIED_ROLE_ID
+from config import COLOR_DANGER, COLOR_SUCCESS, COLOR_PRIMARY_GOLD, DEFAULT_VERIFIED_ROLE_ID
 from database import db
 from captcha_engine import generate_captcha_image
 
 
 def build_verification_panel_embed(guild: discord.Guild, verified_role: Optional[discord.Role] = None) -> discord.Embed:
-    """Builds the public verification panel embed matching the original Discord channel."""
-    role_str = verified_role.mention if verified_role else "@-:-. ยืนยันตัวตนแล้ว •"
+    """Builds the public verification panel embed matching the formal SC Script Center All aesthetic."""
+    role_str = verified_role.mention if verified_role else "@✨・𓆩 สมาชิก 𓆪 •"
     
     embed = discord.Embed(
-        title="PAYOMBØYZ Verification",
+        title="Script Center Verification",
         description=(
-            "โปรดกดปุ่ม \"ยืนยันตัวตน\" ด้านล่าง และนำเลข Captcha ไปใส่ในช่อง เพื่อยืนยันตัวตน "
-            "ว่าคนนะไม่ใช่หุ่นยนต์ ที่จะทนตากแดดทั้งวัน\n\n"
-            f"Verified role: {role_str} •"
+            "ยินดีต้อนรับเข้าสู่คอมมูนิตี้ **SC Script Center All**\n"
+            "เพื่อความปลอดภัย ความเป็นระเบียบเรียบร้อย และการป้องกันระบบอัตโนมัติ (Anti-Bot Verification) "
+            "กรุณาดำเนินการยืนยันตัวตนตามขั้นตอนด้านล่างเพื่อรับสิทธิ์การเข้าถึงเซิร์ฟเวอร์\n\n"
+            "📌 **ขั้นตอนการยืนยันตัวตน:**\n"
+            "1. กดปุ่ม **\"ยืนยันตัวตน\"** สีเขียวด้านล่างนี้\n"
+            "2. ระบบจะแสดงรูปภาพรหัส Captcha นำตัวอักษร 5 หลักมากรอกในแบบฟอร์มให้ถูกต้อง\n"
+            "3. เมื่อยืนยันสำเร็จ ระบบจะมอบยศและปลดล็อกห้องทั้งหมดให้โดยอัตโนมัติทันที\n\n"
+            f"Verified role: {role_str}"
         ),
-        color=COLOR_DANGER  # Red left stripe as seen in the reference screenshot
+        color=COLOR_PRIMARY_GOLD
     )
-    embed.set_footer(text="💎 SC-HUB VERIFICATION SYSTEM • ปลอดภัยจากบอท 100%")
+    embed.set_image(url="attachment://sc_script_center_banner.gif")
+    embed.set_footer(text="💎 SC-HUB VERIFICATION SYSTEM • ปลอดภัยจากระบบอัตโนมัติ 100%")
     return embed
+
+
+def get_verification_banner_file() -> Optional[discord.File]:
+    gif_path = Path(__file__).resolve().parent.parent / "assets" / "sc_script_center_banner.gif"
+    if gif_path.exists():
+        return discord.File(str(gif_path), filename="sc_script_center_banner.gif")
+    return None
 
 
 class CaptchaAnswerModal(ui.Modal, title="ยืนยันคำตอบ Captcha"):
@@ -41,10 +55,11 @@ class CaptchaAnswerModal(ui.Modal, title="ยืนยันคำตอบ Capt
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
         user = interaction.user
         guild = interaction.guild
         if not guild or not isinstance(user, discord.Member):
-            await interaction.response.send_message("❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์", ephemeral=True)
+            await interaction.followup.send("❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์", ephemeral=True)
             return
 
         raw_answer = self.code_input.value
@@ -71,7 +86,7 @@ class CaptchaAnswerModal(ui.Modal, title="ยืนยันคำตอบ Capt
                 except Exception:
                     pass
 
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ **รหัส Captcha ไม่ถูกต้องหรือหมดอายุแล้ว!** (ผิดพลาดครั้งที่ {fail_cnt})\nโปรดกดปุ่ม \"ยืนยันตัวตน\" เพื่อสุ่มรหัสชุดใหม่",
                 ephemeral=True
             )
@@ -94,7 +109,7 @@ class CaptchaAnswerModal(ui.Modal, title="ยืนยันคำตอบ Capt
 
         if verified_role:
             try:
-                await user.add_roles(verified_role, reason="PAYOMBØYZ CAPTCHA Verification Passed")
+                await user.add_roles(verified_role, reason="SC Script Center All CAPTCHA Verification Passed")
                 
                 # Log to MEMBER_AUDIT_CHANNEL_ID (1563251902307901584)
                 try:
@@ -112,19 +127,19 @@ class CaptchaAnswerModal(ui.Modal, title="ยืนยันคำตอบ Capt
                 except Exception as e:
                     print(f"[-] Welcome card announcement error: {e}")
 
-                await interaction.response.send_message(
-                    f"🎉 **ยืนยันตัวตนสำเร็จแล้ว!** คุณได้รับยศ {verified_role.mention} เรียบร้อยแล้ว ยินดีต้อนรับสู่สังคม PAYOMBØYZ!",
+                await interaction.followup.send(
+                    f"🎉 **ยืนยันตัวตนสำเร็จแล้ว!** คุณได้รับยศ {verified_role.mention} เรียบร้อยแล้ว ยินดีต้อนรับสู่สังคม SC Script Center All!",
                     ephemeral=True
                 )
                 return
             except discord.Forbidden:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "⚠️ ยืนยันตัวตนถูกต้อง แต่บอทไม่มีสิทธิ์มอบ Role ให้คุณ (โปรดตรวจสอบลำดับ Role Hierarchy ของบอท)",
                     ephemeral=True
                 )
                 return
         
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "✅ **ยืนยันตัวตนถูกต้อง!** (ระบบไม่พบบทบาทที่ตั้งค่าไว้ โปรดแจ้งแอดมิน)",
             ephemeral=True
         )
@@ -155,10 +170,11 @@ class VerificationPanelView(ui.View):
         custom_id="dispatch:verify:main_btn"
     )
     async def btn_verify(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True, thinking=True)
         user = interaction.user
         guild = interaction.guild
         if not guild:
-            await interaction.response.send_message("❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์", ephemeral=True)
+            await interaction.followup.send("❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์", ephemeral=True)
             return
 
         # Check if already verified
@@ -167,7 +183,7 @@ class VerificationPanelView(ui.View):
         if role_id and isinstance(user, discord.Member):
             has_role = any(r.id == role_id for r in user.roles)
             if has_role:
-                await interaction.response.send_message("✅ คุณผ่านการยืนยันตัวตนไปเรียบร้อยแล้ว!", ephemeral=True)
+                await interaction.followup.send("✅ คุณผ่านการยืนยันตัวตนไปเรียบร้อยแล้ว!", ephemeral=True)
                 return
 
         # Generate fresh CAPTCHA code and distorted image
@@ -177,13 +193,13 @@ class VerificationPanelView(ui.View):
         file = discord.File(img_buf, filename="captcha.png")
 
         challenge_embed = discord.Embed(
-            title="Captcha Challenge",
-            description="Type the characters shown in the image. This challenge expires in 5 minutes.",
-            color=COLOR_DANGER
+            title="🛡️ Captcha Verification Challenge",
+            description="โปรดนำตัวอักษร 5 หลักตามภาพด้านล่าง ไปกรอกในช่อง \"ยืนยันคำตอบ\" (รหัสมีอายุ 5 นาที)",
+            color=COLOR_PRIMARY_GOLD
         )
         challenge_embed.set_image(url="attachment://captcha.png")
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=challenge_embed,
             file=file,
             view=CaptchaChallengeView(),

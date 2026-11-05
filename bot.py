@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================================
-👑 PAYOMBØYZ WORK-ALLOCATION & DISPATCH TICKET ENGINE (SC-Script-Bot)
+👑 SC SCRIPT CENTER ALL WORK-ALLOCATION & DISPATCH TICKET ENGINE (SC-Script-Bot)
 =============================================================================
 Main Bot Application with Slash Command Tree, Dynamic Persistent Views,
 Anti-Bot Captcha Verification, Atomic Concurrency Mutex Claim, Slip API & Dual-Logging.
@@ -34,7 +34,7 @@ if str(BASE_DIR) not in sys.path:
 
 import config
 from database import db
-from views.verify_view import VerificationPanelView, build_verification_panel_embed
+from views.verify_view import VerificationPanelView, build_verification_panel_embed, get_verification_banner_file
 from views.category_view import CategoryRouterView, build_category_router_embed
 from views.lobby_view import DepartmentLobbyView, build_department_lobby_embed
 from views.ticket_view import TicketControlView
@@ -455,7 +455,11 @@ async def setup_dispatch_system(
 
     # 2. Deploy Step 1: Verification Panel
     verify_embed = build_verification_panel_embed(guild=guild, verified_role=verified_role)
-    await verify_channel.send(embed=verify_embed, view=VerificationPanelView())
+    v_file = get_verification_banner_file()
+    if v_file:
+        await verify_channel.send(embed=verify_embed, file=v_file, view=VerificationPanelView())
+    else:
+        await verify_channel.send(embed=verify_embed, view=VerificationPanelView())
 
     # 3. Deploy Step 2: Category Selector Panel
     cat_embed = build_category_router_embed()
@@ -463,7 +467,7 @@ async def setup_dispatch_system(
 
     # 4. Confirmation Follow-up
     summary_embed = discord.Embed(
-        title="✅ ติดตั้งระบบ PAYOMBØYZ Dispatch สำเร็จเรียบร้อย!",
+        title="✅ ติดตั้งระบบ SC Script Center All Dispatch สำเร็จเรียบร้อย!",
         description=(
             f"📍 **ห้อง Verify (Captcha):** {verify_channel.mention}\n"
             f"🎖️ **Verified Role:** {verified_role.mention}\n"
@@ -732,7 +736,17 @@ async def cmd_create_qr(
     await interaction.response.defer(thinking=True)
 
     cfg = db.get_guild_config(guild.id)
-    target = promptpay_target or cfg.get("truemoney_phone") or config.TRUEMONEY_PHONE or "0829934210"
+    target = promptpay_target or cfg.get("truemoney_phone")
+    if not target:
+        try:
+            from user_service import userService
+            ok, remote_cfg = await userService.fetch_payment_gateway_config(guild.id)
+            if ok and remote_cfg.get("promptpay") and remote_cfg["promptpay"].get("account_number"):
+                target = remote_cfg["promptpay"]["account_number"]
+        except Exception:
+            pass
+    if not target:
+        target = config.TRUEMONEY_PHONE or "0829934210"
 
     from promptpay_engine import build_promptpay_qr_embed
     qr_embed, qr_file = build_promptpay_qr_embed(
@@ -1112,7 +1126,11 @@ async def panel_send(
         role = guild.get_role(cfg.get("verified_role_id") or 0)
         embed = build_verification_panel_embed(guild=guild, verified_role=role)
         view = VerificationPanelView()
-        await channel.send(embed=embed, view=view)
+        v_file = get_verification_banner_file()
+        if v_file:
+            await channel.send(embed=embed, file=v_file, view=view)
+        else:
+            await channel.send(embed=embed, view=view)
         await interaction.response.send_message(f"✅ ส่งแผง **Verification Panel** ไปที่ {channel.mention} สำเร็จแล้ว!", ephemeral=True)
     elif panel_type == "category":
         embed = build_category_router_embed()

@@ -135,7 +135,7 @@ def generate_welcome_banner(
     draw.text((cx, cy + r + 82), sub_text, fill=(0, 245, 212, 255), font=f_sub, anchor="mm")
 
     # Line 4: Sentinel Subtitle (Subtle Slate Gray)
-    footer_text = "PAYOMBØYZ COMMUNITY • OFFICIAL MEMBER • SENTINEL v3.0"
+    footer_text = "SC SCRIPT CENTER ALL • OFFICIAL MEMBER • SENTINEL v3.0"
     draw.text((cx, cy + r + 104), footer_text, fill=(136, 146, 176, 255), font=f_footer, anchor="mm")
 
     # 6. Save to BytesIO
@@ -153,11 +153,11 @@ async def build_welcome_embed_and_banner(
 ) -> Tuple[str, discord.Embed, discord.File]:
     """
     Builds the complete welcome payload matching the reference visual aesthetic:
-    - Text announcement: 🪽 ยินดีต้อนรับคุณ @User เข้าสู่เซิร์ฟเวอร์ PAYOMBØYZ ! 🪽
+    - Text announcement: 🪽 ยินดีต้อนรับคุณ @User เข้าสู่เซิร์ฟเวอร์ SC Script Center All ! 🪽
     - Embed with gold sidebar, author tag, member ID, ASCII decorative box, and timestamps
     - Dynamic welcome banner attachment
     """
-    count = member_count or guild.member_count or 1
+    count = member_count or getattr(guild, "member_count", None) or getattr(guild, "approximate_member_count", None) or 1
     now_ts = int(time.time())
 
     # Resolve verified role
@@ -169,7 +169,7 @@ async def build_welcome_embed_and_banner(
     role_mention = verified_role.mention if verified_role else "@ยืนยันตัวตนแล้ว"
 
     # Outer message content
-    message_content = f"🪽 **ยินดีต้อนรับคุณ {member.mention} เข้าสู่เซิร์ฟเวอร์ PAYOMBØYZ !** 🪽"
+    message_content = f"🪽 **ยินดีต้อนรับคุณ {member.mention} เข้าสู่เซิร์ฟเวอร์ SC Script Center All !** 🪽"
 
     # Embed Creation
     embed = discord.Embed(
@@ -184,7 +184,7 @@ async def build_welcome_embed_and_banner(
     )
 
     # Server Thumbnail (Logo)
-    server_icon = guild.icon.url if guild.icon else "https://payomboyzcreative.online/assets/images/logo.png"
+    server_icon = guild.icon.url if guild.icon else "https://cdn.discordapp.com/icons/1562827586101317672/66c2287872db48339e66972baf413ee9.png?size=1024"
     embed.set_thumbnail(url=server_icon)
 
     # Description (Exact ASCII box layout from reference screenshot)
@@ -203,14 +203,14 @@ async def build_welcome_embed_and_banner(
         "╚═════════════════════════════════════════",
         "   ══════════════════════════╝",
         "",
-        "👑 **PAYOMBØYZ SENTINEL VERIFICATION PASSED**",
+        "👑 **SC SCRIPT CENTER ALL VERIFICATION PASSED**",
         "เข้าสู่ศูนย์รวม Script Hub, Auto Quest & เครื่องมือระดับพรีเมียม"
     ]
     embed.description = "\n".join(desc_lines)
 
     # Footer
     embed.set_footer(
-        text="PAYOMBOYZ X WELCOME • PAYOMBØYZ COMMUNITY",
+        text="SC SCRIPT CENTER ALL • WELCOME • SCRIPT CENTER COMMUNITY",
         icon_url=server_icon
     )
 
