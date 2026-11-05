@@ -78,9 +78,19 @@ async def redeem_truemoney_voucher(
     target_phone = phone_number
     if not target_phone and guild:
         cfg = db.get_guild_config(guild.id)
-        target_phone = cfg.get("truemoney_phone") or config.TRUEMONEY_PHONE
+        target_phone = cfg.get("truemoney_phone")
     if not target_phone:
         target_phone = config.TRUEMONEY_PHONE
+
+    # Dynamic fallback to live PHP Web panel settings
+    if not target_phone or target_phone == "0829934210":
+        try:
+            from user_service import userService
+            ok, remote_cfg = await userService.fetch_payment_gateway_config(guild.id if guild else None)
+            if ok and remote_cfg.get("truemoney") and remote_cfg["truemoney"].get("account_number"):
+                target_phone = remote_cfg["truemoney"]["account_number"]
+        except Exception:
+            pass
 
     clean_phone = re.sub(r'[^0-9]', '', target_phone or "")
     if len(clean_phone) != 10 or not clean_phone.startswith("0"):

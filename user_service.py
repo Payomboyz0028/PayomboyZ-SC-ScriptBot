@@ -291,6 +291,28 @@ class UserService:
         except Exception as e:
             return False, f"การเชื่อมต่อล้มเหลว: {e}"
 
+    async def fetch_payment_gateway_config(self, guild_id: Optional[int | str] = None) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Pulls real-time payment gateway settings and slip quota from the PHP Website backend.
+        Endpoint: GET {base_url}/v1/get_payment_config.php or {base_url}/v1/payment-config
+        """
+        base_url, _, api_key = self._resolve_endpoints(guild_id)
+        if not base_url:
+            return False, {"error": "ไม่มีการตั้งค่า Web API Base URL"}
+
+        target = f"{base_url.rstrip('/')}/v1/get_payment_config.php"
+        headers = self._build_headers(api_key)
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=6.0)) as session:
+                async with session.get(target, headers=headers) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return True, data.get("config", {})
+                    text = await resp.text()
+                    return False, {"error": f"HTTP {resp.status}: {text[:100]}"}
+        except Exception as e:
+            return False, {"error": f"Failed to sync payment config: {e}"}
+
 
 # Global Exported Singleton Instances
 userService = UserService()

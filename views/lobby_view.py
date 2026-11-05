@@ -127,6 +127,37 @@ class AdminClaimView(ui.View):
             await interaction.followup.send("❌ ไม่พบข้อมูลลูกค้าในเซิร์ฟเวอร์ (ลูกค้าอาจออกจากเซิร์ฟเวอร์ไปแล้ว)", ephemeral=True)
             return
 
+        # 1.5 ANTI-DUPLICATE GUARD: Double check customer has no active ticket room
+        existing_ticket = db.find_user_open_ticket(guild.id, customer.id)
+        if existing_ticket:
+            existing_ch = guild.get_channel(existing_ticket["channel_id"])
+            if not existing_ch:
+                try:
+                    existing_ch = await guild.fetch_channel(existing_ticket["channel_id"])
+                except Exception:
+                    existing_ch = None
+            if existing_ch:
+                with db._get_connection() as conn:
+                    conn.execute("UPDATE pending_calls SET status = 'duplicate_cancelled' WHERE call_id = ?", (self.call_id,))
+                    conn.commit()
+
+                button.disabled = True
+                button.label = "ลูกค้ามีห้องตั๋วอยู่แล้ว"
+                button.style = discord.ButtonStyle.secondary
+                try:
+                    await interaction.message.edit(view=self)
+                except Exception:
+                    pass
+
+                await interaction.followup.send(
+                    f"⚠️ **ลูกค้ารายนี้มีห้องตั๋วเปิดอยู่แล้ว!** ({existing_ch.mention})\n"
+                    f"ระบบได้ยกเลิกคำขอซ้ำนี้โดยอัตโนมัติ เพื่อป้องกันไม่ให้สร้างห้องซ้อนกัน",
+                    ephemeral=True
+                )
+                return
+            else:
+                db.clean_orphaned_ticket(existing_ticket["channel_id"])
+
         # 2. STEP 4: Private Ticket Room Creation
         cfg = db.get_guild_config(guild.id)
         ticket_num = db.get_next_counter(guild.id)
@@ -224,6 +255,27 @@ class AdminClaimView(ui.View):
                 await interaction.message.edit(embed=claimed_embed, view=claimed_view)
             except Exception:
                 pass
+
+            # Invalidate and disable all other pending calls from this customer across all departments
+            cancelled_calls = db.cancel_other_pending_calls(guild.id, customer.id, exclude_call_id=self.call_id)
+            for c_info in cancelled_calls:
+                m_id = c_info.get("message_id")
+                c_id = c_info.get("channel_id")
+                if m_id and c_id:
+                    try:
+                        c_chan = guild.get_channel(c_id) or await guild.fetch_channel(c_id)
+                        if isinstance(c_chan, discord.TextChannel):
+                            dup_m = await c_chan.fetch_message(m_id)
+                            dup_view = ui.View()
+                            dup_view.add_item(ui.Button(
+                                label=f"รับงานแล้วโดย {admin.display_name}",
+                                style=discord.ButtonStyle.secondary,
+                                disabled=True,
+                                emoji="✅"
+                            ))
+                            await dup_m.edit(view=dup_view)
+                    except Exception:
+                        pass
 
             # Import Ticket Views
             from views.ticket_view import TicketControlView
@@ -338,18 +390,37 @@ class DepartmentLobbyView(ui.View):
 
         dept = DEPARTMENTS.get(self.dept_key, DEPARTMENTS["game"])
 
-        # Check existing open ticket
+        # 1. Anti-Duplicate: Check if user already has an active ticket room
         existing_ticket = db.find_user_open_ticket(guild.id, user.id)
         if existing_ticket:
             ch = guild.get_channel(existing_ticket["channel_id"])
-            ch_mention = ch.mention if ch else f"ID: {existing_ticket['channel_id']}"
+            if not ch:
+                try:
+                    ch = await guild.fetch_channel(existing_ticket["channel_id"])
+                except Exception:
+                    ch = None
+            if ch:
+                await interaction.response.send_message(
+                    f"⚠️ **คุณมีห้องตั๋วที่เปิดค้างไว้อยู่แล้ว!**\nกรุณาใช้ห้องเดิมของคุณที่ {ch.mention}",
+                    ephemeral=True
+                )
+                return
+            else:
+                db.clean_orphaned_ticket(existing_ticket["channel_id"])
+
+        # 2. Anti-Duplicate: Check if user ALREADY has a pending call waiting for staff
+        pending_call = db.find_user_pending_call(guild.id, user.id)
+        if pending_call:
+            call_ts = int(pending_call.get("created_at", time.time()))
             await interaction.response.send_message(
-                f"⚠️ **คุณมีตั๋วที่เปิดค้างไว้อยู่แล้ว!**\nกรุณาใช้ห้องเดิมของคุณที่ {ch_mention}",
+                f"⚠️ **คุณได้กดส่งสัญญาณเรียกทีมงานไว้แล้ว!** (เมื่อ <t:{call_ts}:R>)\n"
+                f"ขณะนี้คำขอของคุณอยู่ในคิวรอทีมงานกดรับเรื่อง โปรดรอสักครู่ ระบบกำลังจัดสรรเจ้าหน้าที่เข้ามาดูแลครับ\n"
+                f"*(เพื่อป้องกันการเปิดห้องซ้ำซ้อน กรุณารอทีมงานกดรับเรื่องสักครู่)*",
                 ephemeral=True
             )
             return
 
-        # 60s Cooldown Guard
+        # 3. 60s Cooldown Guard
         now = time.time()
         last_call = _LOBBY_CALL_COOLDOWNS.get(user.id, 0)
         if now - last_call < 60:

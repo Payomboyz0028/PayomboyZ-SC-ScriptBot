@@ -411,8 +411,60 @@ class DatabaseManager:
                 """, (gid,))
             return [dict(r) for r in cursor.fetchall()]
 
+    def find_user_pending_call(self, guild_id: int | str, customer_id: int) -> Optional[Dict[str, Any]]:
+        """Checks if the user has an existing unhandled pending call waiting for admin claim."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM pending_calls 
+                WHERE guild_id = ? AND customer_id = ? AND status = 'waiting'
+                ORDER BY created_at DESC LIMIT 1
+            """, (str(guild_id), customer_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def cancel_other_pending_calls(self, guild_id: int | str, customer_id: int, exclude_call_id: Optional[str] = None) -> list[Dict[str, Any]]:
+        """Cancels all duplicate pending calls for the user and returns their rows so notifications can be disabled."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if exclude_call_id:
+                cursor.execute("""
+                    SELECT * FROM pending_calls 
+                    WHERE guild_id = ? AND customer_id = ? AND status = 'waiting' AND call_id != ?
+                """, (str(guild_id), customer_id, exclude_call_id))
+                rows = [dict(r) for r in cursor.fetchall()]
+                cursor.execute("""
+                    UPDATE pending_calls 
+                    SET status = 'cancelled' 
+                    WHERE guild_id = ? AND customer_id = ? AND status = 'waiting' AND call_id != ?
+                """, (str(guild_id), customer_id, exclude_call_id))
+            else:
+                cursor.execute("""
+                    SELECT * FROM pending_calls 
+                    WHERE guild_id = ? AND customer_id = ? AND status = 'waiting'
+                """, (str(guild_id), customer_id))
+                rows = [dict(r) for r in cursor.fetchall()]
+                cursor.execute("""
+                    UPDATE pending_calls 
+                    SET status = 'cancelled' 
+                    WHERE guild_id = ? AND customer_id = ? AND status = 'waiting'
+                """, (str(guild_id), customer_id))
+            conn.commit()
+            return rows
+
+    def clean_orphaned_ticket(self, channel_id: int):
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM active_tickets WHERE channel_id = ?", (channel_id,))
+            conn.commit()
+
     def close_ticket(self, channel_id: int):
         with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT customer_id, guild_id FROM active_tickets WHERE channel_id = ?", (channel_id,))
+            row = cursor.fetchone()
+            if row:
+                cust_id, gid = row["customer_id"], row["guild_id"]
+                conn.execute("UPDATE pending_calls SET status = 'closed' WHERE guild_id = ? AND customer_id = ? AND status = 'waiting'", (gid, cust_id))
             conn.execute("DELETE FROM active_tickets WHERE channel_id = ?", (channel_id,))
             conn.commit()
 

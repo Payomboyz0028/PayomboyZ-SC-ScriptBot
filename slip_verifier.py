@@ -114,6 +114,20 @@ async def verify_slip_image_or_payload(
     active_api_url = api_url or SLIP_API_URL
     active_api_key = (api_key or SLIP_API_KEY or "").strip()
 
+    # Dynamic fallback: If not set in environment, check live Website PHP configuration
+    if not active_api_key:
+        try:
+            from user_service import userService
+            ok, remote_cfg = await userService.fetch_payment_gateway_config()
+            if ok and remote_cfg.get("slip_verifier"):
+                sv = remote_cfg["slip_verifier"]
+                if sv.get("is_active") and sv.get("api_key"):
+                    active_api_key = sv.get("api_key").strip()
+                    if sv.get("api_endpoint"):
+                        active_api_url = sv.get("api_endpoint").strip()
+        except Exception:
+            pass
+
     # 1. External EasySlip API Verification (if API Key is configured)
     if active_api_key and (image_bytes or image_url):
 
